@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loop Player</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#17120E; --panel:#201A14; --panel-2:#2A2219; --line:#3A2F23;
+    --ink:#EFE6D9; --muted:#A7947C; --brass:#C79A3E; --brass-dim:#8A6A28;
+    --radius:10px;
+    --sans:"IBM Plex Sans",system-ui,sans-serif;
+    --serif:"Newsreader",Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1220px;margin:0 auto;padding:28px 22px 48px}
+
+  header.top{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+  header.top h1{font-family:var(--serif);font-weight:600;font-size:30px;letter-spacing:-.01em;margin:0}
+  header.top p{margin:0;color:var(--muted);font-size:14px}
+
+  .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:22px;align-items:start}
+
+  .stage{background:#000;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;position:relative;aspect-ratio:16/9}
+  .stage video,.stage #ytbox{position:absolute;inset:0;width:100%;height:100%;border:0;display:none;background:#000}
+  .stage video{object-fit:contain}
+  .stage.mode-file video{display:block}
+  .stage.mode-yt #ytbox{display:block}
+  .stage .empty{position:absolute;inset:0;display:grid;place-content:center;gap:10px;text-align:center;padding:24px;background:var(--panel)}
+  .stage .empty strong{font-family:var(--serif);font-size:20px;font-weight:600}
+  .stage .empty span{color:var(--muted);font-size:14px;max-width:34ch;margin:0 auto}
+  .stage.mode-file .empty,.stage.mode-yt .empty{display:none}
+
+  .bar{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px 16px}
+  .nowplaying{display:flex;justify-content:space-between;gap:14px;align-items:baseline;margin-bottom:10px}
+  .nowplaying .title{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nowplaying .pos{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;flex:none}
+
+  .seekrow{display:flex;align-items:center;gap:12px}
+  .time{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums;flex:none;min-width:42px}
+  .time.right{text-align:right}
+
+  input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;width:100%;height:22px;margin:0;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--panel-2)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:14px;width:14px;border-radius:50%;background:var(--brass);border:none;margin-top:-5px}
+  input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--panel-2)}
+  input[type=range]::-moz-range-thumb{height:14px;width:14px;border:none;border-radius:50%;background:var(--brass)}
+  input[type=range]:focus-visible{outline:2px solid var(--brass);outline-offset:4px;border-radius:4px}
+  #vol{width:96px;flex:none}
+
+  .controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .spacer{flex:1}
+
+  button{font:inherit;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+  button:hover{border-color:var(--brass-dim)}
+  button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+  button.icon{padding:7px 10px;min-width:38px}
+  button.play{background:var(--brass);border-color:var(--brass);color:#1B1408;font-weight:600;min-width:44px}
+  button.on{background:rgba(199,154,62,.14);border-color:var(--brass);color:var(--brass)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  select{font:inherit;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:7px 8px}
+
+  aside{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .aside-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;border-bottom:1px solid var(--line)}
+  .aside-head h2{font-family:var(--serif);font-size:17px;font-weight:600;margin:0}
+  .count{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+
+  ol{list-style:none;margin:0;padding:6px;max-height:min(58vh,520px);overflow:auto}
+  li{display:grid;grid-template-columns:22px 16px minmax(0,1fr) auto auto;align-items:center;gap:9px;padding:8px;border-radius:8px;cursor:grab}
+  li:hover{background:var(--panel-2)}
+  li.playing{background:rgba(199,154,62,.12)}
+  li.playing .idx,li.playing .name{color:var(--brass)}
+  li.drop-target{box-shadow:inset 0 2px 0 var(--brass)}
+  li.dragging{opacity:.45}
+  .idx{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums;text-align:right}
+  .kind{font-size:11px;color:var(--muted);text-align:center}
+  .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+  .dur{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+  .kill{background:transparent;border:none;color:var(--muted);padding:2px 4px;border-radius:6px;line-height:1}
+  .kill:hover{color:#E5836B;background:transparent}
+
+  .aside-foot{padding:12px 14px;border-top:1px solid var(--line);display:grid;gap:8px}
+  .urlrow{display:flex;gap:8px}
+  input[type=url]{font:inherit;flex:1;min-width:0;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+  input[type=url]:focus-visible{outline:2px solid var(--brass);outline-offset:1px}
+  .hint{color:var(--muted);font-size:12.5px;margin:0}
+  .warn{color:#E5A26B;font-size:12.5px;margin:0}
+  kbd{font:inherit;font-size:11.5px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--ink)}
+
+  body.dragover .stage{outline:2px dashed var(--brass);outline-offset:4px}
+
+  @media (max-width:900px){
+    .layout{grid-template-columns:minmax(0,1fr)}
+    aside{order:2}
+    ol{max-height:340px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Loop Player</h1>
+    <p>Op til 20 videoer — lokale filer og YouTube-links i samme loop.</p>
+  </header>
+
+  <div class="layout">
+    <section>
+      <div class="stage" id="stage">
+        <video id="v" playsinline></video>
+        <div id="ytbox"></div>
+        <div class="empty">
+          <strong>Ingen videoer endnu</strong>
+          <span>Vælg filer, træk dem ind, eller indsæt et YouTube-link i feltet til højre.</span>
+          <div><button id="pickBig">Vælg videoer</button></div>
+        </div>
+      </div>
+
+      <div class="bar">
+        <div class="nowplaying">
+          <div class="title" id="npTitle">—</div>
+          <div class="pos" id="npPos"></div>
+        </div>
+
+        <div class="seekrow">
+          <span class="time" id="tCur">0:00</span>
+          <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Søg i video">
+          <span class="time right" id="tDur">0:00</span>
+        </div>
+
+        <div class="controls">
+          <button class="icon" id="prev" title="Forrige (P)">◀◀</button>
+          <button class="play" id="toggle" title="Afspil / pause (mellemrum)">▶</button>
+          <button class="icon" id="next" title="Næste (N)">▶▶</button>
+
+          <button id="loopAll" class="on" title="Start forfra efter sidste video">Loop liste</button>
+          <button id="loopOne" title="Gentag den aktuelle video">Loop én</button>
+          <button id="shuffle" title="Tilfældig rækkefølge">Bland</button>
+
+          <div class="spacer"></div>
+
+          <button class="icon" id="mute" title="Lyd til/fra (M)">🔊</button>
+          <input type="range" id="vol" min="0" max="1" step="0.01" value="1" aria-label="Volumen">
+          <select id="rate" aria-label="Hastighed">
+            <option value="0.5">0,5×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.5">1,5×</option>
+            <option value="2">2×</option>
+          </select>
+          <button class="icon" id="fs" title="Fuld skærm (F)">⛶</button>
+        </div>
+      </div>
+
+      <p class="hint" style="margin-top:10px">
+        <kbd>mellemrum</kbd> afspil · <kbd>←</kbd><kbd>→</kbd> 5 sek · <kbd>↑</kbd><kbd>↓</kbd> volumen ·
+        <kbd>N</kbd>/<kbd>P</kbd> skift video · <kbd>M</kbd> lyd · <kbd>F</kbd> fuld skærm
+      </p>
+      <p class="warn" id="fileWarn" hidden>
+        Siden er åbnet som en lokal fil. YouTube blokerer nogle gange indlejring der — kør
+        <code>python3 -m http.server</code> i mappen og åbn <code>http://localhost:8000/loop-player.html</code>.
+      </p>
+    </section>
+
+    <aside>
+      <div class="aside-head">
+        <h2>Spilleliste</h2>
+        <span class="count" id="count">0 / 20</span>
+      </div>
+      <ol id="list"></ol>
+      <div class="aside-foot">
+        <div class="urlrow">
+          <button id="pick">Tilføj filer</button>
+          <button id="clear">Ryd</button>
+        </div>
+        <div class="urlrow">
+          <input type="url" id="url" placeholder="YouTube-link eller .mp4-URL">
+          <button id="addUrl">Tilføj</button>
+        </div>
+        <p class="hint">Træk i rækkerne for at ændre rækkefølgen.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<input type="file" id="file" accept="video/*" multiple hidden>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+(() => {
+  const MAX = 20;
+  const $ = id => document.getElementById(id);
+  const v = $('v'), stage = $('stage');
+  let items = [];              // {id, kind:'file'|'url'|'yt', name, src, ytId, isBlob, duration}
+  let currentId = null, seeking = false, uid = 0;
+  const state = { loopAll: true, loopOne: false, shuffle: false, volume: 1, muted: false, rate: 1 };
+
+  if (location.protocol === 'file:') $('fileWarn').hidden = false;
+
+  const idx = () => items.findIndex(i => i.id === currentId);
+  const cur = () => items[idx()];
+  const isYT = it => it && it.kind === 'yt';
+
+  const fmt = s => {
+    if (!isFinite(s) || s < 0) return '0:00';
+    s = Math.floor(s);
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sec).padStart(2, '0');
+  };
+
+  /* ---------- YouTube ---------- */
+  let yt = null, ytReady = false, ytPending = null;
+
+  function parseYT(u) {
+    let m;
+    if ((m = u.match(/[?&]v=([\w-]{11})/))) return m[1];
+    if ((m = u.match(/youtu\.be\/([\w-]{11})/))) return m[1];
+    if ((m = u.match(/\/(?:shorts|embed|live|v)\/([\w-]{11})/))) return m[1];
+    if (/^[\w-]{11}$/.test(u.trim())) return u.trim();
+    return null;
+  }
+
+  window.onYouTubeIframeAPIReady = () => {
+    yt = new YT.Player('ytbox', {
+      host: 'https://www.youtube-nocookie.com',
+      playerVars: { controls: 0, rel: 0, modestbranding: 1, playsinline: 1, disablekb: 1, iv_load_policy: 3 },
+      events: {
+        onReady: () => {
+          ytReady = true;
+          applyAudio();
+          if (ytPending) { const id = ytPending; ytPending = null; yt.loadVideoById(id); }
+        },
+        onStateChange: e => {
+          if (e.data === YT.PlayerState.ENDED) next(true);
+          if (e.data === YT.PlayerState.PLAYING) {
+            const it = cur();
+            if (isYT(it)) {
+              const d = yt.getVideoData?.();
+              if (d && d.title && it.name !== d.title) { it.name = d.title; }
+              it.duration = yt.getDuration();
+              try { yt.setPlaybackRate(state.rate); } catch (_) {}
+            }
+          }
+          render();
+        },
+        onError: () => { $('npTitle').textContent = 'Kunne ikke afspille (indlejring blokeret)'; setTimeout(() => next(), 1200); }
+      }
+    });
+  };
+
+  /* ---------- unified transport ---------- */
+  const T = {
+    get ytActive() { return isYT(cur()) && ytReady; },
+    play() { this.ytActive ? yt.playVideo() : v.play().catch(() => {}); },
+    pause() { this.ytActive ? yt.pauseVideo() : v.pause(); },
+    get paused() {
+      if (!cur()) return true;
+      if (isYT(cur())) return !ytReady || yt.getPlayerState() !== YT.PlayerState.PLAYING;
+      return v.paused;
+    },
+    get time() { return this.ytActive ? yt.getCurrentTime() : v.currentTime; },
+    set time(t) { this.ytActive ? yt.seekTo(Math.max(0, t), true) : v.currentTime = Math.max(0, t); },
+    get duration() { return this.ytActive ? yt.getDuration() : (v.duration || 0); }
+  };
+
+  function applyAudio() {
+    v.volume = state.volume; v.muted = state.muted; v.playbackRate = state.rate;
+    if (ytReady) {
+      try {
+        yt.setVolume(Math.round(state.volume * 100));
+        state.muted ? yt.mute() : yt.unMute();
+      } catch (_) {}
+    }
+  }
+
+  /* ---------- playlist ---------- */
+  function probeFile(item) {
+    const t = document.createElement('video');
+    t.preload = 'metadata';
+    t.src = item.src;
+    t.addEventListener('loadedmetadata', () => { item.duration = t.duration; t.src = ''; render(); });
+  }
+
+  async function probeYT(item) {
+    try {
+      const r = await fetch('https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=' + item.ytId);
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d.title) { item.name = d.title; render(); }
+    } catch (_) {}
+  }
+
+  function add(entries) {
+    const room = MAX - items.length;
+    if (room <= 0) return;
+    entries.slice(0, room).forEach(e => {
+      const item = Object.assign({ id: ++uid, duration: null }, e);
+      items.push(item);
+      if (item.kind === 'yt') probeYT(item); else probeFile(item);
+    });
+    render();
+    if (currentId === null && items.length) play(items[0].id);
+  }
+
+  function addFiles(fileList) {
+    const vids = [...fileList].filter(f => f.type.startsWith('video/') || /\.(mp4|webm|ogv|mov|m4v|mkv)$/i.test(f.name));
+    add(vids.map(f => ({ kind: 'file', name: f.name, src: URL.createObjectURL(f), isBlob: true })));
+  }
+
+  function addUrl(u) {
+    u = u.trim();
+    if (!u) return;
+    const ytId = parseYT(u);
+    if (ytId) return add([{ kind: 'yt', ytId, name: 'YouTube · ' + ytId }]);
+    add([{ kind: 'url', name: decodeURIComponent(u.split('/').pop().split('?')[0]) || u, src: u, isBlob: false }]);
+  }
+
+  function remove(id) {
+    const i = items.findIndex(x => x.id === id);
+    if (i < 0) return;
+    const wasCurrent = id === currentId;
+    if (items[i].isBlob) URL.revokeObjectURL(items[i].src);
+    items.splice(i, 1);
+    if (wasCurrent) {
+      if (items.length) play(items[Math.min(i, items.length - 1)].id);
+      else stop();
+    }
+    render();
+  }
+
+  function stop() {
+    currentId = null;
+    v.pause(); v.removeAttribute('src'); v.load();
+    if (ytReady) yt.stopVideo();
+    stage.classList.remove('mode-file', 'mode-yt');
+    render();
+  }
+
+  function clearAll() {
+    items.forEach(i => i.isBlob && URL.revokeObjectURL(i.src));
+    items = [];
+    stop();
+  }
+
+  /* ---------- playback ---------- */
+  function play(id) {
+    const item = items.find(x => x.id === id);
+    if (!item) return;
+    currentId = id;
+
+    if (item.kind === 'yt') {
+      v.pause(); v.removeAttribute('src'); v.load();
+      stage.classList.remove('mode-file'); stage.classList.add('mode-yt');
+      if (ytReady) { applyAudio(); yt.loadVideoById(item.ytId); }
+      else ytPending = item.ytId;
+    } else {
+      if (ytReady) yt.stopVideo();
+      stage.classList.remove('mode-yt'); stage.classList.add('mode-file');
+      v.src = item.src;
+      applyAudio();
+      v.play().catch(() => {});
+    }
+    render();
+  }
+
+  function next(auto = false) {
+    if (!items.length) return;
+    if (auto && state.loopOne) { T.time = 0; T.play(); return; }
+    if (state.shuffle && items.length > 1) {
+      let n;
+      do { n = Math.floor(Math.random() * items.length); } while (items[n].id === currentId);
+      return play(items[n].id);
+    }
+    const i = idx();
+    if (i + 1 < items.length) return play(items[i + 1].id);
+    if (state.loopAll) return play(items[0].id);
+    T.pause(); render();
+  }
+
+  function prev() {
+    if (!items.length) return;
+    if (T.time > 3) { T.time = 0; return; }
+    const i = idx();
+    play(items[i > 0 ? i - 1 : items.length - 1].id);
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    const list = $('list');
+    list.innerHTML = '';
+    items.forEach((item, i) => {
+      const li = document.createElement('li');
+      li.draggable = true;
+      li.dataset.id = item.id;
+      if (item.id === currentId) li.classList.add('playing');
+      li.innerHTML =
+        `<span class="idx">${i + 1}</span>` +
+        `<span class="kind">${item.kind === 'yt' ? '▶' : item.kind === 'url' ? '⇢' : '▤'}</span>` +
+        `<span class="name"></span>` +
+        `<span class="dur">${item.duration ? fmt(item.duration) : ''}</span>` +
+        `<button class="kill" title="Fjern">✕</button>`;
+      const n = li.querySelector('.name');
+      n.textContent = item.name; n.title = item.name;
+      li.addEventListener('click', e => {
+        if (e.target.closest('.kill')) return remove(item.id);
+        play(item.id);
+      });
+      list.appendChild(li);
+    });
+
+    $('count').textContent = `${items.length} / ${MAX}`;
+    const c = cur();
+    $('npTitle').textContent = c ? c.name : '—';
+    $('npPos').textContent = c ? `${idx() + 1} af ${items.length}` : '';
+    ['prev', 'next', 'toggle'].forEach(k => $(k).disabled = !items.length);
+    $('loopAll').classList.toggle('on', state.loopAll);
+    $('loopOne').classList.toggle('on', state.loopOne);
+    $('shuffle').classList.toggle('on', state.shuffle);
+    $('toggle').textContent = T.paused ? '▶' : '❚❚';
+    $('mute').textContent = state.muted || state.volume === 0 ? '🔇' : '🔊';
+  }
+
+  /* ---------- ticker (dækker både file og yt) ---------- */
+  setInterval(() => {
+    if (currentId === null) return;
+    const d = T.duration, t = T.time;
+    $('tCur').textContent = fmt(t);
+    $('tDur').textContent = fmt(d);
+    if (!seeking && d) $('seek').value = Math.round(t / d * 1000);
+  }, 250);
+
+  /* ---------- events ---------- */
+  $('pick').onclick = $('pickBig').onclick = () => $('file').click();
+  $('file').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+  $('clear').onclick = clearAll;
+  $('addUrl').onclick = () => { addUrl($('url').value); $('url').value = ''; };
+  $('url').addEventListener('keydown', e => { if (e.key === 'Enter') $('addUrl').click(); });
+  $('url').addEventListener('paste', e => {
+    const txt = (e.clipboardData || window.clipboardData).getData('text');
+    if (txt && parseYT(txt)) { e.preventDefault(); addUrl(txt); }
+  });
+
+  $('toggle').onclick = () => T.paused ? T.play() : T.pause();
+  $('next').onclick = () => next();
+  $('prev').onclick = prev;
+  $('loopAll').onclick = () => { state.loopAll = !state.loopAll; render(); };
+  $('loopOne').onclick = () => { state.loopOne = !state.loopOne; render(); };
+  $('shuffle').onclick = () => { state.shuffle = !state.shuffle; render(); };
+  $('mute').onclick = () => { state.muted = !state.muted; applyAudio(); render(); };
+  $('vol').oninput = e => { state.volume = +e.target.value; state.muted = state.volume === 0; applyAudio(); render(); };
+  $('rate').onchange = e => { state.rate = +e.target.value; applyAudio(); };
+  $('fs').onclick = () => document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen?.();
+
+  v.addEventListener('ended', () => next(true));
+  v.addEventListener('play', render);
+  v.addEventListener('pause', render);
+  v.addEventListener('error', () => { if (currentId !== null && !isYT(cur())) next(); });
+  $('seek').addEventListener('pointerdown', () => seeking = true);
+  $('seek').addEventListener('pointerup', () => seeking = false);
+  $('seek').addEventListener('input', e => { const d = T.duration; if (d) T.time = e.target.value / 1000 * d; });
+
+  /* drag & drop filer */
+  ['dragenter', 'dragover'].forEach(t => document.addEventListener(t, e => {
+    if (![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault(); document.body.classList.add('dragover');
+  }));
+  ['dragleave', 'drop'].forEach(t => document.addEventListener(t, e => {
+    if (t === 'drop') {
+      if (e.dataTransfer.files.length) { e.preventDefault(); addFiles(e.dataTransfer.files); }
+      else {
+        const txt = e.dataTransfer.getData('text');
+        if (txt && /^https?:/.test(txt)) { e.preventDefault(); addUrl(txt); }
+      }
+    }
+    if (e.relatedTarget === null || t === 'drop') document.body.classList.remove('dragover');
+  }));
+
+  /* drag for at ombytte rækkefølge */
+  let dragId = null;
+  const list = $('list');
+  list.addEventListener('dragstart', e => {
+    const li = e.target.closest('li'); if (!li) return;
+    dragId = +li.dataset.id;
+    li.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(dragId));
+  });
+  list.addEventListener('dragover', e => {
+    if (dragId === null) return;
+    e.preventDefault();
+    const li = e.target.closest('li');
+    [...list.children].forEach(n => n.classList.remove('drop-target'));
+    if (li) li.classList.add('drop-target');
+  });
+  list.addEventListener('drop', e => {
+    if (dragId === null) return;
+    e.preventDefault(); e.stopPropagation();
+    const li = e.target.closest('li');
+    const from = items.findIndex(x => x.id === dragId);
+    const to = li ? items.findIndex(x => x.id === +li.dataset.id) : items.length - 1;
+    if (from > -1 && to > -1 && from !== to) {
+      const [moved] = items.splice(from, 1);
+      items.splice(to, 0, moved);
+    }
+    dragId = null; render();
+  });
+  list.addEventListener('dragend', () => {
+    dragId = null;
+    [...list.children].forEach(n => n.classList.remove('drop-target', 'dragging'));
+  });
+
+  /* tastatur */
+  document.addEventListener('keydown', e => {
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ') { e.preventDefault(); $('toggle').click(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); T.time = T.time + 5; }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); T.time = T.time - 5; }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); state.volume = Math.min(1, state.volume + .05); $('vol').value = state.volume; applyAudio(); render(); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); state.volume = Math.max(0, state.volume - .05); $('vol').value = state.volume; applyAudio(); render(); }
+    else if (k === 'n') next();
+    else if (k === 'p') prev();
+    else if (k === 'm') $('mute').click();
+    else if (k === 'f') $('fs').click();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
